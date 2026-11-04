@@ -325,7 +325,9 @@ func (i *Interval) UnmarshalBinary(data []byte) error {
 // database/sql and ORMs built on it (xorm, gorm, sqlx, ...) without an
 // app-level adapter. A text/varchar column preserves everything — infinite
 // bounds and interval inclusivity included. Scan accepts the string or []byte a
-// driver yields for a text column and maps SQL NULL to the zero value.
+// driver yields for a text column and maps SQL NULL to the zero value
+// Time.Scan also accepts time.Time from native timestamp columns, preserving
+// its location and precision without applying database-specific normalization
 //
 // The Scanner side is asserted against an inline interface so importing timex
 // does not pull all of database/sql into binaries that never touch a database;
@@ -366,13 +368,21 @@ func scanText(u encoding.TextUnmarshaler, src any) error {
 // Value implements database/sql/driver.Valuer.
 func (t Time) Value() (driver.Value, error) { return textValue(t) }
 
-// Scan implements database/sql.Scanner. A NULL column yields the zero Time.
+// Scan implements database/sql.Scanner for native time.Time and text values
+// A NULL column yields the zero Time; native values retain location and precision
 func (t *Time) Scan(src any) error {
-	if src == nil {
+	// Native timestamp columns yield time.Time; NULL clears any previous value
+	switch v := src.(type) {
+	case nil:
 		*t = Time{}
 		return nil
+	case time.Time:
+		*t = FromStdTime(v)
+		return nil
+	default:
+		// Text columns use the same representation as MarshalText, including infinity
+		return scanText(t, src)
 	}
-	return scanText(t, src)
 }
 
 // Value implements database/sql/driver.Valuer.

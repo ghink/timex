@@ -385,6 +385,52 @@ func TestTimeValueScan(t *testing.T) {
 	}
 }
 
+// TestTimeScanNative preserves native timestamp values and clears prior infinity
+func TestTimeScanNative(t *testing.T) {
+	cases := []struct {
+		name  string
+		value time.Time
+	}{
+		{"utc", time.Date(2026, 11, 4, 1, 2, 3, 123456789, time.UTC)},
+		{"offset", time.Date(2026, 11, 4, 9, 2, 3, 987654321, time.FixedZone("UTC+8", 8*60*60))},
+		{"zero", time.Time{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NewPosInfTime()
+			if err := got.Scan(tc.value); err != nil {
+				t.Fatal(err)
+			}
+			std, inf := got.ToStdTime()
+			if inf != FiniteTime || std != tc.value {
+				t.Fatalf("Scan(time.Time) = %v (%v), want %v (finite)", std, inf, tc.value)
+			}
+		})
+	}
+}
+
+// TestTimeScanReuse checks native, text, invalid and NULL values on one receiver
+func TestTimeScanReuse(t *testing.T) {
+	got := NewNegInfTime()
+	if err := got.Scan(encStart.std); err != nil || !got.Equal(encStart) {
+		t.Fatalf("Scan native: %v, %v", got, err)
+	}
+	for _, source := range []any{12345, "invalid timestamp", []byte("invalid timestamp")} {
+		if err := got.Scan(source); err == nil {
+			t.Fatalf("Scan(%T) accepted invalid value", source)
+		}
+		if !got.Equal(encStart) {
+			t.Fatalf("failed Scan(%T) changed receiver: %v", source, got)
+		}
+	}
+	if err := got.Scan([]byte(PosInfTimeStr)); err != nil || got.inf != PosInfTime {
+		t.Fatalf("Scan infinity: %v, %v", got, err)
+	}
+	if err := got.Scan(nil); err != nil || !got.IsZero() {
+		t.Fatalf("Scan NULL: %v, %v", got, err)
+	}
+}
+
 func TestDurationValueScan(t *testing.T) {
 	cases := []struct {
 		name string

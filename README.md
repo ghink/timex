@@ -330,6 +330,24 @@ drivers and lossless, preserving infinite bounds and interval inclusivity that
 no native SQL type captures. A SQL `NULL` scans back to the zero value (use a
 pointer field or an `sql.Null…` wrapper if you must distinguish `NULL`).
 
+`Time.Scan` also accepts native `time.Time` values returned by SQL drivers for
+timestamp columns, including PostgreSQL `timestamptz` through `lib/pq`. Native
+values retain their location and nanosecond precision; database precision and
+session timezone rules still apply. The library does not normalize to UTC or
+truncate timestamps when scanning.
+
+`Time.Value` returns the same text representation as `MarshalText`. For finite
+times, a native timestamp column must accept that RFC 3339 input. Use an explicit
+timestamp column mapping when required by the ORM. Keep `text`/`varchar` storage
+for timex infinity sentinels and interval values; native database infinity
+encodings are not translated by this interface.
+
+For xorm, declare timestamp fields with an explicit `TIMESTAMPZ` mapping and
+use `NoAutoCondition(true)` with explicit `ID`/`Where` predicates when reading
+into a struct. xorm can otherwise turn zero-valued custom `driver.Valuer`
+fields in the destination into additional query conditions. Nullable timestamp
+fields can use `*timex.Time`.
+
 All three types also report `IsZero()` and have a `String()` form, so they read
 naturally in logs and satisfy reflection-based zero-checks (e.g. ORM helpers
 deciding whether to write a column).
